@@ -114,10 +114,11 @@ function buildMarkers() {
     const color = categoryColor(place.category);
     const marker = L.circleMarker([place.lat, place.lon], {
       radius: 8,
-      weight: 2,
+      weight: 3,
       color,
       fillColor: color,
-      fillOpacity: 0.95,
+      fillOpacity: 1,
+      opacity: 1,
     });
 
     marker.bindPopup(renderPopupHtml(place), { autoPanPadding: [24, 24], closeButton: false });
@@ -320,7 +321,7 @@ function categoryChipHtml({ id, label, count, pressed, swatch }) {
 function categoryColor(category) {
   const hash = hashCode(category);
   const hue = ((hash % 360) + 360) % 360;
-  return `hsl(${hue}, 56%, 34%)`;
+  return `hsl(${hue}, 86%, 40%)`;
 }
 
 function hashCode(value) {
