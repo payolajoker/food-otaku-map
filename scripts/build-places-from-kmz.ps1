@@ -159,6 +159,217 @@ function Resolve-YouTube([string]$description) {
   }
 }
 
+$YouTubeRequestHeaders = @{
+  "User-Agent" = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0 Safari/537.36"
+  "Accept-Language" = "en-US,en;q=0.9"
+}
+$YouTubeStoryboardMetaCache = @{}
+
+function Get-YouTubeStoryboardMeta {
+  [CmdletBinding()]
+  param([Parameter(Mandatory = $true)][string]$VideoId)
+
+  if ([string]::IsNullOrWhiteSpace($VideoId)) {
+    return $null
+  }
+
+  if ($YouTubeStoryboardMetaCache.ContainsKey($VideoId)) {
+    return $YouTubeStoryboardMetaCache[$VideoId]
+  }
+
+  try {
+    $watchUrl = "https://www.youtube.com/watch?v=$VideoId"
+    $response = Invoke-WebRequest -Uri $watchUrl -UseBasicParsing -Headers $YouTubeRequestHeaders -TimeoutSec 20
+  } catch {
+    Write-Warning "Failed to load YouTube watch page for '$VideoId': $($_.Exception.Message)"
+    return $null
+  }
+
+  $match = [regex]::Match($response.Content, 'ytInitialPlayerResponse\s*=\s*(\{.*?\})\s*;', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+  if (-not $match.Success) {
+    Write-Warning "Could not locate ytInitialPlayerResponse for '$VideoId'"
+    return $null
+  }
+
+  $playerResponse = $null
+  try {
+    $playerResponse = ConvertFrom-Json $match.Groups[1].Value
+  } catch {
+    Write-Warning "Failed to parse ytInitialPlayerResponse JSON for '$VideoId': $($_.Exception.Message)"
+    return $null
+  }
+
+  $storyboardSpec = $playerResponse.storyboards.playerStoryboardSpecRenderer.spec
+  if ([string]::IsNullOrWhiteSpace($storyboardSpec)) {
+    return $null
+  }
+
+  $lengthText = [string]$playerResponse.videoDetails.lengthSeconds
+  $lengthSeconds = 0
+  if (-not [double]::TryParse($lengthText, [ref]$lengthSeconds)) {
+    return $null
+  }
+  $durationSeconds = [int][Math]::Floor($lengthSeconds)
+
+  $parts = $storyboardSpec -split '\|'
+  if ($parts.Count -lt 2) {
+    return $null
+  }
+
+  $baseUrl = $parts[0]
+  $levels = @()
+  for ($i = 1; $i -lt $parts.Count; $i++) {
+    $tokens = $parts[$i] -split '#'
+    if ($tokens.Count -lt 8) {
+      continue
+    }
+
+    try {
+      $frameWidth = [int]$tokens[0]
+      $frameHeight = [int]$tokens[1]
+      $frameCount = [int]$tokens[2]
+      $cols = [int]$tokens[3]
+      $rows = [int]$tokens[4]
+      $interval = [int]$tokens[5]
+    } catch {
+      continue
+    }
+
+    if ($frameCount -le 0 -or $frameWidth -le 0 -or $frameHeight -le 0) {
+      continue
+    }
+    if ($interval -le 0 -and $durationSeconds -gt 0) {
+      $interval = [int](($durationSeconds / [double]$frameCount) * 1000)
+    }
+
+    $thumbnailsPerImage = [Math]::Max(1, $cols * $rows)
+    $imageCount = [int][Math]::Ceiling($frameCount / [double]$thumbnailsPerImage)
+    $boardName = $tokens[6]
+    $signature = $tokens[$tokens.Length - 1]
+    $urlTemplate = $baseUrl.Replace('$L', "$i").Replace('$N', $boardName)
+    $urlTemplate = if ($urlTemplate.Contains("?")) { "$urlTemplate&sigh=$signature" } else { "$urlTemplate?sigh=$signature" }
+
+    $levels += [pscustomobject]@{
+      width = $frameWidth
+      height = $frameHeight
+      count = $frameCount
+      columns = $cols
+      rows = $rows
+      interval = [Math]::Max(1, $interval)
+      boardName = $boardName
+      urlTemplate = $urlTemplate
+      imageCount = [Math]::Max(1, $imageCount)
+      thumbnailsPerImage = $thumbnailsPerImage
+    }
+  }
+
+  if ($levels.Count -eq 0) {
+    return $null
+  }
+
+  $meta = [pscustomobject]@{
+    levels = $levels
+  }
+  $YouTubeStoryboardMetaCache[$VideoId] = $meta
+  return $meta
+}
+
+function Test-ImageUrl {
+  [CmdletBinding()]
+  param([Parameter(Mandatory = $true)][string]$Uri)
+
+  try {
+    $null = Invoke-WebRequest -Uri $Uri -Method Head -UseBasicParsing -Headers $YouTubeRequestHeaders -TimeoutSec 10 -ErrorAction Stop
+    return $true
+  } catch {
+    return $false
+  }
+}
+
+function Get-YoutubeTimestampFrame {
+  [CmdletBinding()]
+  param(
+    [Parameter(Mandatory = $true)][string]$VideoId,
+    [Parameter(Mandatory = $true)][int]$StartSeconds
+  )
+
+  $meta = Get-YouTubeStoryboardMeta -VideoId $VideoId
+  if ($meta -eq $null -or -not $meta.levels) {
+    return $null
+  }
+
+  $timeMs = [Math]::Max(0, $StartSeconds) * 1000
+  foreach ($level in ($meta.levels | Sort-Object { $_.width * $_.height } -Descending)) {
+    if ($level.count -le 0) {
+      continue
+    }
+
+    $index = [int][Math]::Floor($timeMs / [double]$level.interval)
+    if ($index -lt 0) {
+      $index = 0
+    }
+    if ($index -ge $level.count) {
+      $index = $level.count - 1
+    }
+
+    $boardIndex = [Math]::Max(0, [int][Math]::Floor($index / [double]$level.thumbnailsPerImage))
+    if ($boardIndex -ge $level.imageCount) {
+      $boardIndex = $level.imageCount - 1
+    }
+
+    $frameInBoard = $index - ($boardIndex * $level.thumbnailsPerImage)
+    $row = [Math]::Floor($frameInBoard / [double]$level.columns)
+    $col = $frameInBoard % $level.columns
+    $url = if ($level.boardName -eq 'M$M') {
+      $level.urlTemplate.Replace('M$M', "M$boardIndex")
+    } else {
+      $level.urlTemplate
+    }
+
+    return [pscustomobject]@{
+      url = $url
+      x = $col * $level.width
+      y = $row * $level.height
+      width = $level.width
+      height = $level.height
+    }
+  }
+
+  return $null
+}
+
+function Get-YouTubeTimestampOverrideFromName {
+  [CmdletBinding()]
+  param([Parameter(Mandatory = $true)][string]$Name)
+
+  $normalizedName = if ($Name) { $Name.Trim() } else { "" }
+  if ([string]::IsNullOrWhiteSpace($normalizedName)) {
+    return $null
+  }
+
+  if ($normalizedName -match "\uAC00\uC4F0\uC624\s*\uACF5\uC0AC") {
+    return "https://youtu.be/eOuRDr4EpRE?si=3Qp_mUndCnQEJLZk&t=429"
+  }
+
+  return $null
+}
+
+function Get-YouTubeTimestampOverride {
+  [CmdletBinding()]
+  param([Parameter(Mandatory = $true)][string]$Name)
+
+  $normalizedName = if ($Name) { $Name.Trim() } else { "" }
+  if ([string]::IsNullOrWhiteSpace($normalizedName)) {
+    return $null
+  }
+
+  if ($normalizedName -match "가쓰오\\s*공사") {
+    return "https://youtu.be/eOuRDr4EpRE?si=3Qp_mUndCnQEJLZk&t=429"
+  }
+
+  return $null
+}
+
 function Collect-Places([System.Xml.XmlElement]$node, [string]$category, [System.Xml.XmlNamespaceManager]$ns) {
   $items = @()
 
@@ -192,10 +403,18 @@ function Collect-Places([System.Xml.XmlElement]$node, [string]$category, [System
 
     $yt = Resolve-YouTube -description $description
     $normalizedName = if ([string]::IsNullOrWhiteSpace($name)) { "" } else { $name.Trim() }
-    $override = $YouTubeTimestampOverrides[$normalizedName]
+    $override = Get-YouTubeTimestampOverride -Name $normalizedName
+    if ([string]::IsNullOrWhiteSpace($override)) {
+      $override = Get-YouTubeTimestampOverrideFromName -Name $normalizedName
+    }
     if (-not [string]::IsNullOrWhiteSpace($override)) {
       $yt = Resolve-YouTube -description $override
     }
+    $youtubeFrame = $null
+    if ($yt.id -and $yt.start -ne $null) {
+      $youtubeFrame = Get-YoutubeTimestampFrame -VideoId $yt.id -StartSeconds $yt.start
+    }
+
     $items += [pscustomobject]@{
       id = "$name ($($parts[1]),$($parts[0]))"
       category = $currentCategory
@@ -207,6 +426,7 @@ function Collect-Places([System.Xml.XmlElement]$node, [string]$category, [System
       youtubeId = $yt.id
       youtubeStart = $yt.start
       youtubeStartLabel = $yt.label
+      youtubeFrame = $youtubeFrame
     }
   }
 

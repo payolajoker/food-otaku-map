@@ -1,4 +1,7 @@
 const DATA_URL = "./data/places.json";
+const YOUTUBE_GATSUO_URL = "https://youtu.be/eOuRDr4EpRE?si=3Qp_mUndCnQEJLZk&t=429";
+const YOUTUBE_GATSUO_PATTERN = /\uAC00\uC4F0\uC624\s*\uACF5\uC0AC/i;
+
 const YOUTUBE_TIMESTAMP_OVERRIDES = new Map([
   [
     "가쓰오 공사",
@@ -22,7 +25,7 @@ const els = {
   btnSidebar: document.getElementById("btnSidebar"),
 };
 
-/** @typedef {{id:string, category:string, name:string, description:string, lat:number, lon:number, youtubeUrl:string|null, youtubeId:string|null, youtubeStart:number|null, youtubeStartLabel:string|null}} Place */
+/** @typedef {{id:string, category:string, name:string, description:string, lat:number, lon:number, youtubeUrl:string|null, youtubeId:string|null, youtubeStart:number|null, youtubeStartLabel:string|null, youtubeFrame:{url:string|null, x:number|null, y:number|null, width:number|null, height:number|null}|null}} Place */
 const state = {
   map: null,
   markerLayer: null,
@@ -189,6 +192,22 @@ function normalizeCategory(rawCategory) {
   return category.replace(/^\s*식덕후\s*지도\s*쨌\s*/u, "").trim();
 }
 
+function normalizeCategorySafe(rawCategory) {
+  const normalized = normalizeCategory(rawCategory);
+  if (typeof normalized !== "string") {
+    return "카테고리 없음";
+  }
+
+  if (normalized.startsWith("식덕후 지도")) {
+    return normalized.replace(/^식덕후\s*지도\s*/u, "").trim();
+  }
+  if (normalized.startsWith("식덕후 ")) {
+    return normalized.replace(/^식덕후\s*/u, "").trim();
+  }
+
+  return normalized;
+}
+
 function renderAll() {
   renderMarkers();
   renderList();
@@ -328,13 +347,18 @@ function youtubeWatchUrl(place) {
 function normalizePlace(place) {
   const normalized = {
     ...place,
-    category: normalizeCategory(place.category),
+    category: normalizeCategorySafe(place.category),
   };
   return normalizeYoutubeFallback(normalized);
 }
 
 function normalizeYoutubeFallback(place) {
-  const entry = YOUTUBE_TIMESTAMP_OVERRIDES.get((place.name ?? "").trim());
+  const placeName = (place.name ?? "").trim();
+  const entry =
+    YOUTUBE_TIMESTAMP_OVERRIDES.get(placeName) ??
+    (YOUTUBE_GATSUO_PATTERN.test(placeName)
+      ? { url: YOUTUBE_GATSUO_URL, startSeconds: 429 }
+      : null);
   if (!entry) {
     return place;
   }
@@ -397,11 +421,40 @@ function youtubeThumbFallbackUrl(place) {
 }
 
 function youtubeThumbHtml(place) {
+  const frame = youtubeFrameStyle(place);
+  if (frame) return frame;
+
   const thumbnailUrl = youtubeThumbUrl(place);
   const fallbackUrl = youtubeThumbFallbackUrl(place);
   if (!thumbnailUrl) return "";
 
-  return `<img class="popup__thumb" src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(`${place.name} video screenshot`)}" loading="lazy" onerror="this.onerror=null;this.src='${escapeHtml(fallbackUrl)}'">`;
+  return `<img class="popup__thumb popup__thumb--video" src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(`${place.name} video screenshot`)}" loading="lazy" onerror="this.onerror=null;this.src='${escapeHtml(fallbackUrl)}'">`;
+}
+
+function youtubeFrameStyle(place) {
+  if (!place.youtubeFrame || !place.youtubeFrame.url) {
+    return "";
+  }
+
+  const frame = place.youtubeFrame;
+  const width = Number(frame.width || 0);
+  const height = Number(frame.height || 0);
+  const x = Number(frame.x || 0);
+  const y = Number(frame.y || 0);
+  if (!width || !height) {
+    return "";
+  }
+  const scale = 1.8;
+  const safeUrl = frame.url.replace(/'/g, "&#39;");
+  const style = [
+    `--frame-url:url('${safeUrl}')`,
+    `--frame-x:${-x * scale}px`,
+    `--frame-y:${-y * scale}px`,
+    `--frame-w:${width * scale}px`,
+    `--frame-h:${height * scale}px`,
+  ].join(";");
+
+  return `<div class="popup__thumb popup__thumb--frame" style="${style}" role="img" aria-label="${escapeHtml(`${place.name} timestamp frame`)}"></div>`;
 }
 
 function emptyListHtml() {
@@ -421,7 +474,7 @@ function categoryChipHtml({ id, label, count, pressed, swatch }) {
 function categoryColor(category) {
   const hash = hashCode(category);
   const hue = ((hash % 360) + 360) % 360;
-  return `hsl(${hue}, 95%, 44%)`;
+  return `hsl(${hue}, 98%, 55%)`;
 }
 
 function hashCode(value) {
