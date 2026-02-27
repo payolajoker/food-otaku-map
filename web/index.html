@@ -26,13 +26,23 @@
     <div class="app">
       <header class="topbar">
         <div class="brand">
-          <div class="brand__kicker">FIELD ATLAS</div>
           <h1 class="brand__title">식덕후 지도</h1>
         </div>
       </header>
 
       <main class="main">
         <aside class="sidebar" id="sidebar" aria-label="장소 목록">
+          <button
+            class="sheetToggle"
+            id="btnSheetToggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="sidebar"
+            aria-label="모바일 목록 열기"
+          >
+            <span class="sheetToggle__handle" aria-hidden="true"></span>
+            <span class="sheetToggle__text">목록</span>
+          </button>
           <div class="panel">
             <label class="search" for="searchInput">
               <span class="search__label">검색</span>

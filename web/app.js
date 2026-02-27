@@ -18,9 +18,11 @@ const YOUTUBE_TIMESTAMP_OVERRIDES = new Map([
     },
   ],
 ]);
+const MOBILE_BREAKPOINT = 980;
 
 const els = {
   app: document.querySelector(".app"),
+  sidebar: document.getElementById("sidebar"),
   loader: document.getElementById("loader"),
   errorBox: document.getElementById("errorBox"),
   folderChips: document.getElementById("folderChips"),
@@ -28,8 +30,7 @@ const els = {
   resultCount: document.getElementById("resultCount"),
   statusLine: document.getElementById("statusLine"),
   searchInput: document.getElementById("searchInput"),
-  btnReset: document.getElementById("btnReset"),
-  btnSidebar: document.getElementById("btnSidebar"),
+  btnSheetToggle: document.getElementById("btnSheetToggle"),
 };
 
 /** @typedef {{id:string, category:string, name:string, description:string, lat:number, lon:number, youtubeUrl:string|null, youtubeId:string|null, youtubeStart:number|null, youtubeStartLabel:string|null, youtubeFrameImage:string|null, youtubeFrame:{url:string|null, x:number|null, y:number|null, width:number|null, height:number|null}|null}} Place */
@@ -48,6 +49,7 @@ const state = {
 
 function init() {
   wireEvents();
+  syncMobileSheetMode();
   initMap();
   loadData().catch((error) => {
     console.error(error);
@@ -61,31 +63,78 @@ function wireEvents() {
     renderAll();
   });
 
-  els.btnReset?.addEventListener("click", () => {
-    state.query = "";
-    state.activeId = null;
-    state.categoryEnabled = new Set(state.categories);
-    els.searchInput.value = "";
-    syncChipState();
-    renderAll();
-    fitToVisible();
-    setStatus("초기화");
+  els.btnSheetToggle?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleMobileSheet();
   });
 
-  els.btnSidebar?.addEventListener("click", () => {
-    const open = els.app.dataset.sidebar !== "closed";
-    els.app.dataset.sidebar = open ? "closed" : "open";
+  els.searchInput.addEventListener("focus", () => {
+    if (isMobileViewport()) {
+      setMobileSheetState(true);
+    }
+  });
+
+  els.sidebar?.addEventListener("focusin", (event) => {
+    if (!isMobileViewport()) return;
+    const target = event.target;
+    if (target instanceof Node && els.btnSheetToggle?.contains(target)) return;
+    setMobileSheetState(true);
+  });
+
+  window.addEventListener("resize", () => {
+    syncMobileSheetMode();
   });
 
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && els.btnSidebar && !els.btnSidebar.hidden) {
-      els.app.dataset.sidebar = "closed";
+    if (event.key === "Escape" && isMobileViewport()) {
+      setMobileSheetState(false);
     }
     if (event.key === "/" && document.activeElement !== els.searchInput) {
       event.preventDefault();
       els.searchInput.focus();
+      if (isMobileViewport()) {
+        setMobileSheetState(true);
+      }
     }
   });
+}
+
+function isMobileViewport() {
+  return window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT}px)`).matches;
+}
+
+function syncMobileSheetMode() {
+  if (!els.app) return;
+
+  if (isMobileViewport()) {
+    if (els.app.dataset.sheet !== "expanded") {
+      els.app.dataset.sheet = "collapsed";
+    }
+    updateSheetToggleState();
+    return;
+  }
+
+  els.app.dataset.sheet = "desktop";
+  updateSheetToggleState();
+}
+
+function toggleMobileSheet() {
+  if (!els.app || !isMobileViewport()) return;
+  const expanded = els.app.dataset.sheet === "expanded";
+  setMobileSheetState(!expanded);
+}
+
+function setMobileSheetState(expanded) {
+  if (!els.app || !isMobileViewport()) return;
+  els.app.dataset.sheet = expanded ? "expanded" : "collapsed";
+  updateSheetToggleState();
+}
+
+function updateSheetToggleState() {
+  if (!els.btnSheetToggle || !els.app) return;
+  const expanded = !isMobileViewport() || els.app.dataset.sheet === "expanded";
+  els.btnSheetToggle.setAttribute("aria-expanded", String(expanded));
 }
 
 function initMap() {
@@ -98,6 +147,11 @@ function initMap() {
   state.map = map;
   state.markerLayer = L.layerGroup().addTo(map);
   map.on("moveend zoomend resize", scheduleLabelCollisionUpdate);
+  map.on("click", () => {
+    if (isMobileViewport()) {
+      setMobileSheetState(false);
+    }
+  });
   map.setView([35.2, 129.1], 5);
 }
 
@@ -307,8 +361,8 @@ function renderList() {
 
       state.activeId = id;
       renderList();
-      if (els.btnSidebar && !els.btnSidebar.hidden) {
-        els.app.dataset.sidebar = "closed";
+      if (isMobileViewport()) {
+        setMobileSheetState(false);
       }
       state.map.flyTo([place.lat, place.lon], Math.max(state.map.getZoom(), 12), { duration: 0.6 });
       marker.openPopup();
