@@ -13,21 +13,7 @@ const els = {
   btnSidebar: document.getElementById("btnSidebar"),
 };
 
-/**
- * @typedef {{
- *   id: string,
- *   category: string,
- *   name: string,
- *   description: string,
- *   lat: number,
- *   lon: number,
- *   youtubeUrl: string | null,
- *   youtubeId: string | null,
- *   youtubeStart: number | null,
- *   youtubeStartLabel: string | null
- * }} Place
- */
-
+/** @typedef {{id:string, category:string, name:string, description:string, lat:number, lon:number, youtubeUrl:string|null, youtubeId:string|null, youtubeStart:number|null, youtubeStartLabel:string|null}} Place */
 const state = {
   map: null,
   markerLayer: null,
@@ -83,22 +69,15 @@ function wireEvents() {
 }
 
 function initMap() {
-  const map = L.map("map", {
-    zoomControl: true,
-    preferCanvas: true,
-  });
-
+  const map = L.map("map", { zoomControl: true, preferCanvas: true });
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer noopener">OpenStreetMap</a>',
   }).addTo(map);
-
-  const markerLayer = L.layerGroup().addTo(map);
-  map.setView([35.2, 129.1], 5);
-
   state.map = map;
-  state.markerLayer = markerLayer;
+  state.markerLayer = L.layerGroup().addTo(map);
+  map.setView([35.2, 129.1], 5);
 }
 
 async function loadData() {
@@ -107,8 +86,7 @@ async function loadData() {
 
   const resp = await fetch(DATA_URL, { cache: "no-store" });
   if (!resp.ok) throw new Error(`places.json fetch failed: ${resp.status}`);
-  /** @type {Place[]} */
-  const places = await resp.json();
+  const places = (await resp.json()) ?? [];
 
   const countByCategory = new Map();
   for (const place of places) {
@@ -116,7 +94,7 @@ async function loadData() {
   }
 
   state.places = places;
-  state.categories = Array.from(countByCategory.keys());
+  state.categories = Array.from(countByCategory.keys()).sort();
   state.categoryEnabled = new Set(state.categories);
   state.categoryCounts = countByCategory;
 
@@ -125,18 +103,20 @@ async function loadData() {
   renderAll();
   fitToVisible();
   showLoader(false);
-  setStatus(`${places.length}개 장소 로드`);
+  setStatus(`${places.length}개 장소 로드 완료`);
 }
 
 function buildMarkers() {
   state.markersById.clear();
+  state.markerLayer.clearLayers();
 
   for (const place of state.places) {
+    const color = categoryColor(place.category);
     const marker = L.circleMarker([place.lat, place.lon], {
       radius: 8,
       weight: 2,
-      color: categoryColor(place.category),
-      fillColor: categoryColor(place.category),
+      color,
+      fillColor: color,
       fillOpacity: 0.95,
     });
 
@@ -146,17 +126,25 @@ function buildMarkers() {
       renderList();
       setStatus(`${place.category} · ${place.name}`);
     });
-
     state.markersById.set(place.id, marker);
   }
 }
 
 function renderCategoryChips() {
-  const chips = [];
-  chips.push(categoryChipHtml({ id: "__all__", label: "전체", count: state.places.length, pressed: true, swatch: "#2c7a4b" }));
+  const chips = [
+    categoryChipHtml({ id: "__all__", label: "전체", count: state.places.length, pressed: true, swatch: "#2c7a4b" }),
+  ];
   for (const category of state.categories) {
     const count = state.categoryCounts.get(category) ?? 0;
-    chips.push(categoryChipHtml({ id: category, label: category, count, pressed: true, swatch: categoryColor(category) }));
+    chips.push(
+      categoryChipHtml({
+        id: category,
+        label: category,
+        count,
+        pressed: true,
+        swatch: categoryColor(category),
+      }),
+    );
   }
 
   els.folderChips.innerHTML = chips.join("");
@@ -200,8 +188,7 @@ function renderAll() {
 
 function renderMarkers() {
   state.markerLayer.clearLayers();
-  const visible = getVisiblePlaces();
-  for (const place of visible) {
+  for (const place of getVisiblePlaces()) {
     const marker = state.markersById.get(place.id);
     if (marker) marker.addTo(state.markerLayer);
   }
@@ -209,16 +196,14 @@ function renderMarkers() {
 
 function renderList() {
   const visible = getVisiblePlaces();
-  const html = visible.map((place) => placeItemHtml(place)).join("");
-  els.placeList.innerHTML = html || emptyListHtml();
+  els.placeList.innerHTML = visible.map((place) => placeItemHtml(place)).join("") || emptyListHtml();
 
   for (const row of els.placeList.querySelectorAll("[data-place-id]")) {
     row.addEventListener("click", () => {
       const id = /** @type {HTMLElement} */ (row).dataset.placeId;
       if (!id) return;
-
       const place = state.places.find((item) => item.id === id);
-      const marker = state.markersById.get(id);
+      const marker = place ? state.markersById.get(id) : null;
       if (!place || !marker) return;
 
       state.activeId = id;
@@ -254,17 +239,20 @@ function getVisiblePlaces() {
 
 function renderPopupHtml(place) {
   const link = youtubeLinkHtml(place);
-  const timestamp = place.youtubeStartLabel ? `<div class=\"popup__timestamp\">타임스탬프: ${place.youtubeStartLabel}</div>` : "";
+  const timestamp = place.youtubeStartLabel
+    ? `<div class="popup__timestamp">타임스탬프: ${place.youtubeStartLabel}</div>`
+    : "";
   const description = escapeHtml(place.description || "설명 없음");
+  const coords = `${place.lat.toFixed(6)}, ${place.lon.toFixed(6)}`;
 
   return `
     <div class="popupTitle">${escapeHtml(place.name)}</div>
-    <div class="popupMeta">${escapeHtml(place.category)} · ${place.lat.toFixed(6)}, ${place.lon.toFixed(6)}</div>
+    <div class="popupMeta">${escapeHtml(place.category)} · ${coords}</div>
     <div class="popup__desc">${description}</div>
     ${timestamp}
     <div class="popupActions">
       ${link}
-      <a class="pillLink pillLink--alt" href="https://www.google.com/maps?q=${encodeURIComponent(`${place.lat},${place.lon}`)}" target="_blank" rel="noreferrer noopener">Google Maps 열기 ↗</a>
+      <a class="pillLink pillLink--alt" href="https://www.google.com/maps?q=${encodeURIComponent(`${place.lat},${place.lon}`)}" target="_blank" rel="noreferrer noopener">Google Maps 열기</a>
     </div>
   `;
 }
@@ -293,13 +281,30 @@ function youtubeLinkHtml(place) {
   if (!place.youtubeUrl) {
     return "";
   }
-  const start = place.youtubeStart != null ? `&amp;t=${place.youtubeStart}s` : "";
   const label = place.youtubeStartLabel ? ` (${place.youtubeStartLabel})` : "";
-  return `<a class="pillLink" href="${escapeHtml(place.youtubeUrl)}${start}" target="_blank" rel="noreferrer noopener">유튜브${label} 열기 ↗</a>`;
+  const href = youtubeWatchUrl(place);
+  return `<a class="pillLink" href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">유튜브${label} 열기 ↗</a>`;
+}
+
+function youtubeWatchUrl(place) {
+  if (!place.youtubeUrl) {
+    return "";
+  }
+
+  try {
+    const url = new URL(place.youtubeUrl);
+    if (place.youtubeStart != null) {
+      url.searchParams.set("t", `${place.youtubeStart}s`);
+    }
+    return url.toString();
+  } catch (_error) {
+    const separator = place.youtubeUrl.includes("?") ? "&" : "?";
+    return `${place.youtubeUrl}${place.youtubeStart != null ? `${separator}t=${place.youtubeStart}s` : ""}`;
+  }
 }
 
 function emptyListHtml() {
-  return `<div style="padding:14px 10px;color:var(--muted);font-size:13px;">표시할 장소가 없습니다. 필터 또는 검색어를 확인해 주세요.</div>`;
+  return `<div style="padding:14px 10px;color:var(--muted);font-size:13px;">검색 결과가 없습니다. 다른 키워드로 다시 시도하세요.</div>`;
 }
 
 function categoryChipHtml({ id, label, count, pressed, swatch }) {
@@ -319,11 +324,11 @@ function categoryColor(category) {
 }
 
 function hashCode(value) {
-  let h = 0;
+  let hash = 0;
   for (let i = 0; i < value.length; i++) {
-    h = (h * 31 + value.charCodeAt(i)) | 0;
+    hash = (hash * 31 + value.charCodeAt(i)) | 0;
   }
-  return h;
+  return hash;
 }
 
 function showLoader(on) {
@@ -334,7 +339,7 @@ function showLoader(on) {
 function showError() {
   showLoader(false);
   els.errorBox.classList.remove("is-hidden");
-  setStatus("데이터 오류");
+  setStatus("에러 발생");
 }
 
 function setStatus(text) {

@@ -98,6 +98,16 @@ function Resolve-YouTube([string]$description) {
   if ([string]::IsNullOrWhiteSpace($startRaw)) {
     $startRaw = $query["time_continue"]
   }
+  $cleanQuery = [System.Web.HttpUtility]::ParseQueryString("")
+  foreach ($key in $query.AllKeys) {
+    if ($key -in @("t", "start", "time_continue")) {
+      continue
+    }
+    $null = $cleanQuery.Add($key, $query[$key])
+  }
+  $builder = New-Object System.UriBuilder($uri)
+  $builder.Query = $cleanQuery.ToString()
+  $urlText = $builder.Uri.AbsoluteUri
 
   $start = Parse-TimeSeconds -raw $startRaw
   $label = if ($start -ne $null) { SecondsToLabel -seconds $start } else { $null }
@@ -174,8 +184,15 @@ if (-not $documentNode) { $documentNode = $xml.DocumentElement }
 $places = Collect-Places -node $documentNode -category "" -ns $ns
 $places = $places | Sort-Object category, name
 
-$root = Split-Path -Parent (Resolve-Path -Path "." | Join-Path -ChildPath $OutputPath)
+$fullOutputPath = (Resolve-Path -Path (Split-Path -Parent $OutputPath -ErrorAction SilentlyContinue)).Path
+$root = if ([string]::IsNullOrWhiteSpace($fullOutputPath)) {
+  (Get-Location).Path
+} else {
+  $fullOutputPath
+}
 if (-not (Test-Path $root)) { New-Item -ItemType Directory -Path $root -Force | Out-Null }
 
-$places | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
+$json = $places | ConvertTo-Json -Depth 8
+$outputAbsolutePath = (Resolve-Path -LiteralPath "." | Join-Path -ChildPath $OutputPath)
+[System.IO.File]::WriteAllText($outputAbsolutePath, $json, [System.Text.UTF8Encoding]::new($false))
 Write-Host "Exported: $($places.Count) places -> $OutputPath"
