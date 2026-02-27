@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Food Otaku Map</title>
+    <meta name="description" content="KML(KMZ)에서 추출한 장소 핀을 한 페이지 지도에서 탐색합니다." />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Hahmlet:wght@400;600;700&family=Gowun+Dodum&display=swap"
+      rel="stylesheet"
+    />
+
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app" data-sidebar="open">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand__kicker">FIELD ATLAS</div>
+          <h1 class="brand__title">식덕후 지도</h1>
+          <p class="brand__sub">카테고리 · 장소명 · 설명 기반 단일 지도 페이지</p>
+        </div>
+        <div class="topbar__actions">
+          <button class="btn btn--ghost" id="btnSidebar" type="button" aria-label="목록 토글">
+            목록
+          </button>
+          <button class="btn btn--ghost" id="btnReset" type="button">초기화</button>
+        </div>
+      </header>
+
+      <main class="main">
+        <aside class="sidebar" id="sidebar" aria-label="장소 목록">
+          <div class="panel">
+            <label class="search" for="searchInput">
+              <span class="search__label">검색</span>
+              <input
+                id="searchInput"
+                class="search__input"
+                type="search"
+                placeholder="장소 이름/설명 검색…"
+                autocomplete="off"
+              />
+            </label>
+
+            <section class="filters" aria-label="카테고리 필터">
+              <div class="filters__header">
+                <div class="filters__title">카테고리</div>
+                <div class="filters__meta" id="resultCount">—</div>
+              </div>
+              <div class="chips" id="folderChips"></div>
+            </section>
+          </div>
+
+          <div class="list">
+            <div class="list__header">
+              <div class="list__title">장소</div>
+                <div class="list__hint">클릭하면 지도에서 열립니다</div>
+            </div>
+            <div class="placeList" id="placeList" role="list"></div>
+          </div>
+        </aside>
+
+        <section class="mapWrap" aria-label="지도">
+          <div class="mapFrame">
+            <div id="map" class="map" aria-label="Leaflet map"></div>
+            <div class="mapOverlay" id="loader" aria-live="polite">
+              <div class="loader">
+                <div class="loader__ring" aria-hidden="true"></div>
+                <div class="loader__text">
+                  <div class="loader__title">지도 만드는 중…</div>
+                  <div class="loader__sub">KML 데이터를 불러오고 있습니다</div>
+                </div>
+              </div>
+            </div>
+            <div class="mapOverlay mapOverlay--error is-hidden" id="errorBox" aria-live="polite">
+              <div class="error">
+                <div class="error__title">데이터를 불러오지 못했어요</div>
+                <div class="error__body">
+                  브라우저에서 파일을 직접 열면(<code>file://</code>) 데이터 로딩이 막힐 수 있어요.
+                </div>
+                <div class="error__cmd">
+                  <div class="error__cmdLabel">로컬 서버로 실행</div>
+                  <pre class="cmd"><code>cd web
+python -m http.server 8000</code></pre>
+                  <div class="error__cmdLabel">그 다음 접속</div>
+                  <div class="error__url"><code>http://localhost:8000</code></div>
+                </div>
+            </div>
+          </div>
+          </div>
+
+          <footer class="footer">
+            <div class="footer__left">
+              <span class="badge">data</span>
+              <code class="mono">web/data/places.json</code>
+            </div>
+            <div class="footer__right" id="statusLine">—</div>
+          </footer>
+        </section>
+      </main>
+    </div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+      crossorigin=""
+    ></script>
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>
