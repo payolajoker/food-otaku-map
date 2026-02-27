@@ -61,7 +61,7 @@ function wireEvents() {
     renderAll();
   });
 
-  els.btnReset.addEventListener("click", () => {
+  els.btnReset?.addEventListener("click", () => {
     state.query = "";
     state.activeId = null;
     state.categoryEnabled = new Set(state.categories);
@@ -72,13 +72,13 @@ function wireEvents() {
     setStatus("초기화");
   });
 
-  els.btnSidebar.addEventListener("click", () => {
+  els.btnSidebar?.addEventListener("click", () => {
     const open = els.app.dataset.sidebar !== "closed";
     els.app.dataset.sidebar = open ? "closed" : "open";
   });
 
   window.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") {
+    if (event.key === "Escape" && els.btnSidebar && !els.btnSidebar.hidden) {
       els.app.dataset.sidebar = "closed";
     }
     if (event.key === "/" && document.activeElement !== els.searchInput) {
@@ -307,7 +307,9 @@ function renderList() {
 
       state.activeId = id;
       renderList();
-      els.app.dataset.sidebar = "closed";
+      if (els.btnSidebar && !els.btnSidebar.hidden) {
+        els.app.dataset.sidebar = "closed";
+      }
       state.map.flyTo([place.lat, place.lon], Math.max(state.map.getZoom(), 12), { duration: 0.6 });
       marker.openPopup();
     });
