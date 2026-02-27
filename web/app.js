@@ -86,7 +86,11 @@ async function loadData() {
 
   const resp = await fetch(DATA_URL, { cache: "no-store" });
   if (!resp.ok) throw new Error(`places.json fetch failed: ${resp.status}`);
-  const places = (await resp.json()) ?? [];
+  const rawPlaces = (await resp.json()) ?? [];
+  const places = rawPlaces.map((place) => ({
+    ...place,
+    category: normalizeCategory(place.category),
+  }));
 
   const countByCategory = new Map();
   for (const place of places) {
@@ -132,9 +136,7 @@ function buildMarkers() {
 }
 
 function renderCategoryChips() {
-  const chips = [
-    categoryChipHtml({ id: "__all__", label: "전체", count: state.places.length, pressed: true, swatch: "#2c7a4b" }),
-  ];
+  const chips = [];
   for (const category of state.categories) {
     const count = state.categoryCounts.get(category) ?? 0;
     chips.push(
@@ -156,13 +158,8 @@ function renderCategoryChips() {
     const category = target.dataset.chip;
     if (!category) return;
 
-    if (category === "__all__") {
-      const allEnabled = state.categoryEnabled.size === state.categories.length;
-      state.categoryEnabled = allEnabled ? new Set() : new Set(state.categories);
-    } else {
-      if (state.categoryEnabled.has(category)) state.categoryEnabled.delete(category);
-      else state.categoryEnabled.add(category);
-    }
+    if (state.categoryEnabled.has(category)) state.categoryEnabled.delete(category);
+    else state.categoryEnabled.add(category);
 
     syncChipState();
     renderAll();
@@ -171,14 +168,19 @@ function renderCategoryChips() {
 }
 
 function syncChipState() {
-  const allActive = state.categoryEnabled.size === state.categories.length;
-  els.folderChips.querySelector('[data-chip="__all__"]')?.setAttribute("aria-pressed", String(allActive));
-
   for (const category of state.categories) {
     const selector = `[data-chip="${cssSafe(category)}"]`;
     const chip = els.folderChips.querySelector(selector);
     if (chip) chip.setAttribute("aria-pressed", String(state.categoryEnabled.has(category)));
   }
+}
+
+function normalizeCategory(rawCategory) {
+  const category = String(rawCategory ?? "").trim();
+  if (!category) {
+    return "기타";
+  }
+  return category.replace(/^\s*식덕후\s*지도\s*쨌\s*/u, "").trim();
 }
 
 function renderAll() {
@@ -321,7 +323,7 @@ function categoryChipHtml({ id, label, count, pressed, swatch }) {
 function categoryColor(category) {
   const hash = hashCode(category);
   const hue = ((hash % 360) + 360) % 360;
-  return `hsl(${hue}, 86%, 40%)`;
+  return `hsl(${hue}, 95%, 44%)`;
 }
 
 function hashCode(value) {
