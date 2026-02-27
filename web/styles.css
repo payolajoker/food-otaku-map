@@ -368,9 +368,8 @@ body {
 .mapWrap {
   min-height: 0;
   display: grid;
-  grid-template-rows: 1fr auto;
-  padding: 18px 18px 14px;
-  gap: 10px;
+  grid-template-rows: 1fr;
+  padding: 18px;
 }
 
 .mapFrame {

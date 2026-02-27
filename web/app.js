@@ -1,6 +1,13 @@
 const DATA_URL = "./data/places.json";
 const YOUTUBE_GATSUO_URL = "https://youtu.be/eOuRDr4EpRE?si=3Qp_mUndCnQEJLZk&t=429";
 const YOUTUBE_GATSUO_PATTERN = /\uAC00\uC4F0\uC624\s*\uACF5\uC0AC/i;
+const EPISODE_COLORS = new Map([
+  [1, "#D96B2B"],
+  [2, "#6E4FB8"],
+  [3, "#2F8CFF"],
+  [4, "#E7C97A"],
+  [5, "#C93B3B"],
+]);
 
 const YOUTUBE_TIMESTAMP_OVERRIDES = new Map([
   [
@@ -458,6 +465,12 @@ function categoryChipHtml({ id, label, count, pressed, swatch }) {
 }
 
 function categoryColor(category) {
+  const episode = parseEpisodeFromCategory(category);
+  if (Number.isFinite(episode)) {
+    const key = Math.trunc(episode);
+    const mapped = EPISODE_COLORS.get(key);
+    if (mapped) return mapped;
+  }
   const hash = hashCode(category);
   const hue = ((hash % 360) + 360) % 360;
   return `hsl(${hue}, 98%, 55%)`;
@@ -483,7 +496,9 @@ function showError() {
 }
 
 function setStatus(text) {
-  els.statusLine.textContent = text;
+  if (els.statusLine) {
+    els.statusLine.textContent = text;
+  }
 }
 
 function escapeHtml(text) {
