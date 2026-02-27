@@ -1,25 +1,45 @@
-# Sick — 지도 페이지
+# Food Otaku Map
 
-rawdata.kmz(구글 맵스)에서 추출한 데이터를 단일 페이지 지도 페이지로 변환한 결과입니다.
+This repo is a single-page map app for `rawdata.kmz`:
+- 카테고리(Category)
+- 장소명(Name)
+- 좌표(Coordinate)
+- 설명(Description)
+- 유튜브 타임스탬프(YouTube timestamp)
 
-## 실행
+## Run locally
 
 ```powershell
 cd web
 python -m http.server 8000
 ```
 
-브라우저에서 `http://localhost:8000` 접속.
+Open `http://localhost:8000`.
 
-## 데이터 갱신(추가 반영)
+## Generate map data once from KMZ/KML
 
 ```powershell
 .\scripts\build-places-from-kmz.ps1 -InputPath .\rawdata.kmz -OutputPath .\web\data\places.json
 ```
 
-KMZ를 매번 로딩하지 않고, 위 스크립트로 변환된 `places.json`만 페이지가 사용합니다.
+The app does **not** load `kmz` every visit.
+It always uses `web/data/places.json` so updates only need this script when data changes.
 
-## 데이터 구조
+### Data fields written to `places.json`
 
-- `web/data/places.json` (카테고리/이름/설명/좌표/유튜브 링크/타임스탬프)
+- `category`
+- `name`
+- `description`
+- `lat`
+- `lon`
+- `youtubeUrl`
+- `youtubeId`
+- `youtubeStart` / `youtubeStartLabel`
 
+## GitHub Pages deployment
+
+1. Create a GitHub repository named `food-otaku-map`.
+2. Push `main` branch from this directory.
+3. `.github/workflows/deploy.yml` auto deploys `web` directory on each `main` push.
+
+Current environment token cannot create the GitHub repo automatically, so remote creation must be done in your account once.
