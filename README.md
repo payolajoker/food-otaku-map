@@ -43,3 +43,14 @@ It always uses `web/data/places.json` so updates only need this script when data
 3. `.github/workflows/deploy.yml` auto deploys `web` directory on each `main` push.
 
 Current environment token cannot create the GitHub repo automatically, so remote creation must be done in your account once.
+
+## Capture exact timestamp frames
+
+After generating `web/data/places.json`, capture exact frames for each `youtubeStart`:
+
+```powershell
+python -m pip install imageio-ffmpeg
+python scripts/capture-youtube-frames.py --force
+```
+
+The script writes frame images to `web/assets/frames/` and updates each place with `youtubeFrameImage`.

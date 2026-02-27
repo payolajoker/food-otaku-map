@@ -25,7 +25,7 @@ const els = {
   btnSidebar: document.getElementById("btnSidebar"),
 };
 
-/** @typedef {{id:string, category:string, name:string, description:string, lat:number, lon:number, youtubeUrl:string|null, youtubeId:string|null, youtubeStart:number|null, youtubeStartLabel:string|null, youtubeFrame:{url:string|null, x:number|null, y:number|null, width:number|null, height:number|null}|null}} Place */
+/** @typedef {{id:string, category:string, name:string, description:string, lat:number, lon:number, youtubeUrl:string|null, youtubeId:string|null, youtubeStart:number|null, youtubeStartLabel:string|null, youtubeFrameImage:string|null, youtubeFrame:{url:string|null, x:number|null, y:number|null, width:number|null, height:number|null}|null}} Place */
 const state = {
   map: null,
   markerLayer: null,
@@ -426,7 +426,7 @@ function youtubeThumbSecondaryFallbackUrl(place) {
 }
 
 function youtubeThumbHtml(place) {
-  const frameUrl = place.youtubeFrame?.url || "";
+  const frameUrl = String(place.youtubeFrameImage || "").trim();
   const thumbnailUrl = youtubeThumbUrl(place);
   const fallbackUrl = youtubeThumbFallbackUrl(place);
   const secondaryFallbackUrl = youtubeThumbSecondaryFallbackUrl(place);
