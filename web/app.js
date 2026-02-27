@@ -43,6 +43,7 @@ const state = {
   categoryEnabled: new Set(),
   activeId: null,
   query: "",
+  labelCollisionRaf: null,
 };
 
 function init() {
@@ -96,6 +97,7 @@ function initMap() {
   }).addTo(map);
   state.map = map;
   state.markerLayer = L.layerGroup().addTo(map);
+  map.on("moveend zoomend resize", scheduleLabelCollisionUpdate);
   map.setView([35.2, 129.1], 5);
 }
 
@@ -241,6 +243,54 @@ function renderMarkers() {
     const marker = state.markersById.get(place.id);
     if (marker) marker.addTo(state.markerLayer);
   }
+  scheduleLabelCollisionUpdate();
+}
+
+function scheduleLabelCollisionUpdate() {
+  if (!state.map) return;
+  if (state.labelCollisionRaf != null) {
+    cancelAnimationFrame(state.labelCollisionRaf);
+  }
+
+  state.labelCollisionRaf = requestAnimationFrame(() => {
+    state.labelCollisionRaf = null;
+    applyLabelCollisionVisibility();
+  });
+}
+
+function applyLabelCollisionVisibility() {
+  const keptRects = [];
+  for (const place of getVisiblePlaces()) {
+    const marker = state.markersById.get(place.id);
+    const markerRoot = marker?.getElement();
+    const markerBody = markerRoot?.querySelector(".mapMarker");
+    const label = markerRoot?.querySelector(".mapMarker__label");
+
+    if (!(markerBody instanceof HTMLElement) || !(label instanceof HTMLElement)) {
+      continue;
+    }
+
+    markerBody.classList.remove("mapMarker--labelHidden");
+    const rect = label.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+
+    const overlapped = keptRects.some((existingRect) => rectIntersects(rect, existingRect, 4));
+    if (overlapped) {
+      markerBody.classList.add("mapMarker--labelHidden");
+      continue;
+    }
+
+    keptRects.push(rect);
+  }
+}
+
+function rectIntersects(left, right, padding = 0) {
+  return !(
+    left.right + padding <= right.left ||
+    left.left >= right.right + padding ||
+    left.bottom + padding <= right.top ||
+    left.top >= right.bottom + padding
+  );
 }
 
 function renderList() {
