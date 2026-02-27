@@ -281,16 +281,17 @@ function getVisiblePlaces() {
 function renderPopupHtml(place) {
   const link = youtubeLinkHtml(place);
   const image = youtubeThumbHtml(place);
-  const timestamp = place.youtubeStartLabel
+  const showMetaText = !place.youtubeUrl;
+  const timestamp = showMetaText && place.youtubeStartLabel
     ? `<div class="popup__timestamp">타임스탬프: ${place.youtubeStartLabel}</div>`
     : "";
-  const description = escapeHtml(place.description || "설명 없음");
+  const description = showMetaText ? escapeHtml(place.description || "설명 없음") : "";
   const coords = `${place.lat.toFixed(6)}, ${place.lon.toFixed(6)}`;
 
   return `
     <div class="popupTitle">${escapeHtml(place.name)}</div>
     <div class="popupMeta">${escapeHtml(place.category)} · ${coords}</div>
-    <div class="popup__desc">${description}</div>
+    ${showMetaText ? `<div class="popup__desc">${description}</div>` : ""}
     ${timestamp}
     ${image}
     <div class="popupActions">
@@ -322,9 +323,8 @@ function youtubeLinkHtml(place) {
   if (!place.youtubeUrl) {
     return "";
   }
-  const label = place.youtubeStartLabel ? ` (${place.youtubeStartLabel})` : "";
   const href = youtubeWatchUrl(place);
-  return `<a class="pillLink" href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">유튜브${label} 열기 ↗</a>`;
+  return `<a class="pillLink" href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener">유튜브 열기 ↗</a>`;
 }
 
 function youtubeWatchUrl(place) {
@@ -420,41 +420,27 @@ function youtubeThumbFallbackUrl(place) {
   return `https://i.ytimg.com/vi/${encodeURIComponent(place.youtubeId)}/hqdefault.jpg`;
 }
 
-function youtubeThumbHtml(place) {
-  const frame = youtubeFrameStyle(place);
-  if (frame) return frame;
-
-  const thumbnailUrl = youtubeThumbUrl(place);
-  const fallbackUrl = youtubeThumbFallbackUrl(place);
-  if (!thumbnailUrl) return "";
-
-  return `<img class="popup__thumb popup__thumb--video" src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(`${place.name} video screenshot`)}" loading="lazy" onerror="this.onerror=null;this.src='${escapeHtml(fallbackUrl)}'">`;
+function youtubeThumbSecondaryFallbackUrl(place) {
+  if (!place.youtubeId) return "";
+  return `https://i.ytimg.com/vi/${encodeURIComponent(place.youtubeId)}/mqdefault.jpg`;
 }
 
-function youtubeFrameStyle(place) {
-  if (!place.youtubeFrame || !place.youtubeFrame.url) {
-    return "";
-  }
+function youtubeThumbHtml(place) {
+  const frameUrl = place.youtubeFrame?.url || "";
+  const thumbnailUrl = youtubeThumbUrl(place);
+  const fallbackUrl = youtubeThumbFallbackUrl(place);
+  const secondaryFallbackUrl = youtubeThumbSecondaryFallbackUrl(place);
+  const primaryUrl = frameUrl || thumbnailUrl;
 
-  const frame = place.youtubeFrame;
-  const width = Number(frame.width || 0);
-  const height = Number(frame.height || 0);
-  const x = Number(frame.x || 0);
-  const y = Number(frame.y || 0);
-  if (!width || !height) {
-    return "";
-  }
-  const scale = 1.8;
-  const safeUrl = frame.url.replace(/'/g, "&#39;");
-  const style = [
-    `--frame-url:url('${safeUrl}')`,
-    `--frame-x:${-x * scale}px`,
-    `--frame-y:${-y * scale}px`,
-    `--frame-w:${width * scale}px`,
-    `--frame-h:${height * scale}px`,
-  ].join(";");
+  if (!primaryUrl) return "";
 
-  return `<div class="popup__thumb popup__thumb--frame" style="${style}" role="img" aria-label="${escapeHtml(`${place.name} timestamp frame`)}"></div>`;
+  const escapedFallback = escapeHtml(fallbackUrl);
+  const escapedSecondaryFallback = escapeHtml(secondaryFallbackUrl);
+  const onErrorScript = secondaryFallbackUrl
+    ? `if(this.dataset.fb!=='1'){this.dataset.fb='1';this.src='${escapedFallback}';return;}if(this.dataset.fb!=='2'){this.dataset.fb='2';this.src='${escapedSecondaryFallback}';return;}this.onerror=null;`
+    : `if(this.dataset.fb!=='1'){this.dataset.fb='1';this.src='${escapedFallback}';return;}this.onerror=null;`;
+
+  return `<img class="popup__thumb popup__thumb--video" src="${escapeHtml(primaryUrl)}" alt="${escapeHtml(`${place.name} video screenshot`)}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="${onErrorScript}">`;
 }
 
 function emptyListHtml() {
