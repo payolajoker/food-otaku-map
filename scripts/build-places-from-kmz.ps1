@@ -40,10 +40,10 @@ function Parse-TimeSeconds([string]$raw) {
 
   $value = $raw.Trim().ToLowerInvariant()
   if ($value -match '^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$') {
-    $h = if ($matches[1]) { [int]$matches[1] } else { 0 }
-    $m = if ($matches[2]) { [int]$matches[2] } else { 0 }
-    $s = if ($matches[3]) { [int]$matches[3] } else { 0 }
-    return $h * 3600 + $m * 60 + $s
+    $hours = if ($matches[1]) { [int]$matches[1] } else { 0 }
+    $minutes = if ($matches[2]) { [int]$matches[2] } else { 0 }
+    $seconds = if ($matches[3]) { [int]$matches[3] } else { 0 }
+    return $hours * 3600 + $minutes * 60 + $seconds
   }
 
   if ($value -match '^\d+$') {
@@ -54,9 +54,9 @@ function Parse-TimeSeconds([string]$raw) {
 }
 
 function SecondsToLabel([int]$seconds) {
-  $m = [int][Math]::Floor($seconds / 60)
-  $s = $seconds % 60
-  return "{0}:{1:00}" -f $m, $s
+  $totalMinutes = [int][Math]::Floor($seconds / 60)
+  $remainingSeconds = $seconds % 60
+  return "{0}:{1:00}" -f $totalMinutes, $remainingSeconds
 }
 
 function Resolve-YouTube([string]$description) {

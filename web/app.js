@@ -325,8 +325,8 @@ function categoryColor(category) {
 
 function hashCode(value) {
   let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = (hash * 31 + value.charCodeAt(i)) | 0;
+  for (let index = 0; index < value.length; index++) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
   }
   return hash;
 }
