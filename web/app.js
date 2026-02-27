@@ -1,4 +1,13 @@
 const DATA_URL = "./data/places.json";
+const YOUTUBE_TIMESTAMP_OVERRIDES = new Map([
+  [
+    "가쓰오 공사",
+    {
+      url: "https://youtu.be/eOuRDr4EpRE?si=3Qp_mUndCnQEJLZk&t=429",
+      startSeconds: 429,
+    },
+  ],
+]);
 
 const els = {
   app: document.querySelector(".app"),
@@ -87,10 +96,7 @@ async function loadData() {
   const resp = await fetch(DATA_URL, { cache: "no-store" });
   if (!resp.ok) throw new Error(`places.json fetch failed: ${resp.status}`);
   const rawPlaces = (await resp.json()) ?? [];
-  const places = rawPlaces.map((place) => ({
-    ...place,
-    category: normalizeCategory(place.category),
-  }));
+  const places = rawPlaces.map((place) => normalizePlace(place));
 
   const countByCategory = new Map();
   for (const place of places) {
@@ -231,17 +237,31 @@ function fitToVisible() {
 }
 
 function getVisiblePlaces() {
+  const query = state.query;
+
   return state.places
     .filter((place) => state.categoryEnabled.has(place.category))
     .filter((place) => {
-      if (!state.query) return true;
+      if (!query) return true;
       const text = `${place.name} ${place.description} ${place.category}`.toLowerCase();
-      return text.includes(state.query);
+      return text.includes(query);
+    })
+    .sort((left, right) => {
+      const episodeDiff = parseEpisodeFromCategory(left.category) - parseEpisodeFromCategory(right.category);
+      if (episodeDiff !== 0) return episodeDiff;
+
+      const leftStart = left.youtubeStart ?? Number.POSITIVE_INFINITY;
+      const rightStart = right.youtubeStart ?? Number.POSITIVE_INFINITY;
+      const startDiff = leftStart - rightStart;
+      if (startDiff !== 0) return startDiff;
+
+      return left.name.localeCompare(right.name, "ko");
     });
 }
 
 function renderPopupHtml(place) {
   const link = youtubeLinkHtml(place);
+  const image = youtubeThumbHtml(place);
   const timestamp = place.youtubeStartLabel
     ? `<div class="popup__timestamp">타임스탬프: ${place.youtubeStartLabel}</div>`
     : "";
@@ -253,6 +273,7 @@ function renderPopupHtml(place) {
     <div class="popupMeta">${escapeHtml(place.category)} · ${coords}</div>
     <div class="popup__desc">${description}</div>
     ${timestamp}
+    ${image}
     <div class="popupActions">
       ${link}
       <a class="pillLink pillLink--alt" href="https://www.google.com/maps?q=${encodeURIComponent(`${place.lat},${place.lon}`)}" target="_blank" rel="noreferrer noopener">Google Maps 열기</a>
@@ -262,7 +283,6 @@ function renderPopupHtml(place) {
 
 function placeItemHtml(place) {
   const active = place.id === state.activeId ? "is-active" : "";
-  const timeTag = place.youtubeStartLabel ? `<span class="tag">timestamp ${place.youtubeStartLabel}</span>` : "";
 
   return `
     <button class="place ${active}" type="button" role="listitem" data-place-id="${escapeHtml(place.id)}">
@@ -273,7 +293,6 @@ function placeItemHtml(place) {
           <span class="tag">
             <span class="tag__swatch" style="background:${categoryColor(place.category)}"></span>${escapeHtml(place.category)}
           </span>
-          ${timeTag}
         </div>
       </div>
     </button>
@@ -304,6 +323,85 @@ function youtubeWatchUrl(place) {
     const separator = place.youtubeUrl.includes("?") ? "&" : "?";
     return `${place.youtubeUrl}${place.youtubeStart != null ? `${separator}t=${place.youtubeStart}s` : ""}`;
   }
+}
+
+function normalizePlace(place) {
+  const normalized = {
+    ...place,
+    category: normalizeCategory(place.category),
+  };
+  return normalizeYoutubeFallback(normalized);
+}
+
+function normalizeYoutubeFallback(place) {
+  const entry = YOUTUBE_TIMESTAMP_OVERRIDES.get((place.name ?? "").trim());
+  if (!entry) {
+    return place;
+  }
+
+  const updated = { ...place };
+  if (entry.url) {
+    updated.youtubeUrl = entry.url;
+  }
+  if (entry.startSeconds > 0) {
+    updated.youtubeStart = entry.startSeconds;
+    updated.youtubeStartLabel = secondsToLabel(entry.startSeconds);
+  }
+
+  return updated;
+}
+
+function parseEpisode(category) {
+  if (!category) return Number.POSITIVE_INFINITY;
+
+  const match = String(category).match(/ep\.?\s*(\d+(?:\.\d+)?)/i);
+  if (match?.[1]) {
+    const parsed = Number(match[1]);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  const koreaMatch = String(category).match(/에피소드\s*(\d+(?:\.\d+)?)/i);
+  if (koreaMatch?.[1]) {
+    const parsed = Number(koreaMatch[1]);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+
+  return Number.POSITIVE_INFINITY;
+}
+
+function parseEpisodeFromCategory(category) {
+  if (!category) return Number.POSITIVE_INFINITY;
+  const normalized = String(category).toLowerCase();
+  const match = normalized.match(/ep\.?\s*(\d+(?:\.\d+)?)/i);
+  if (!match?.[1]) return Number.POSITIVE_INFINITY;
+
+  const parsed = Number(match[1]);
+  return Number.isFinite(parsed) ? parsed : Number.POSITIVE_INFINITY;
+}
+
+function secondsToLabel(seconds) {
+  const totalSeconds = Number(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function youtubeThumbUrl(place) {
+  if (!place.youtubeId) return "";
+  return `https://i.ytimg.com/vi/${encodeURIComponent(place.youtubeId)}/maxresdefault.jpg`;
+}
+
+function youtubeThumbFallbackUrl(place) {
+  if (!place.youtubeId) return "";
+  return `https://i.ytimg.com/vi/${encodeURIComponent(place.youtubeId)}/hqdefault.jpg`;
+}
+
+function youtubeThumbHtml(place) {
+  const thumbnailUrl = youtubeThumbUrl(place);
+  const fallbackUrl = youtubeThumbFallbackUrl(place);
+  if (!thumbnailUrl) return "";
+
+  return `<img class="popup__thumb" src="${escapeHtml(thumbnailUrl)}" alt="${escapeHtml(`${place.name} video screenshot`)}" loading="lazy" onerror="this.onerror=null;this.src='${escapeHtml(fallbackUrl)}'">`;
 }
 
 function emptyListHtml() {

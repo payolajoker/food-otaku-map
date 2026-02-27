@@ -7,6 +7,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Web
+$YouTubeTimestampOverrides = @{
+  "가쓰오 공사" = "https://youtu.be/eOuRDr4EpRE?si=3Qp_mUndCnQEJLZk&t=429"
+}
 
 function Read-KmlText([string]$path) {
   $ext = [System.IO.Path]::GetExtension($path).ToLowerInvariant()
@@ -53,6 +56,16 @@ function Parse-TimeSeconds([string]$raw) {
   return $null
 }
 
+function Parse-Episode([string]$category) {
+  if ([string]::IsNullOrWhiteSpace($category)) {
+    return [double]::PositiveInfinity
+  }
+  if ($category -match '(?i)EP\.?\s*([0-9]+(?:\.[0-9]+)?)') {
+    return [double]$matches[1]
+  }
+  return [double]::PositiveInfinity
+}
+
 function SecondsToLabel([int]$seconds) {
   $totalMinutes = [int][Math]::Floor($seconds / 60)
   $remainingSeconds = $seconds % 60
@@ -64,59 +77,85 @@ function Resolve-YouTube([string]$description) {
     return @{ url = $null; id = $null; start = $null; label = $null }
   }
 
-  if (-not ($description -match 'https?:\/\/[^\s"<>]+')) {
+  $urlMatches = [regex]::Matches($description, 'https?:\/\/[^\s"<>]+')
+  if ($urlMatches.Count -eq 0) {
     return @{ url = $null; id = $null; start = $null; label = $null }
   }
 
-  $urlText = $matches[0]
-  $urlText = $urlText -replace '[)\]]+$', ''
-  try {
-    $uri = [Uri]$urlText
-  } catch {
-    return @{ url = $urlText; id = $null; start = $null; label = $null }
-  }
-
-  $id = $null
-  if ($uri.Host -eq "youtu.be") {
-    $id = $uri.AbsolutePath.Trim("/")
-  } elseif ($uri.AbsolutePath -match "^/watch$") {
-    $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
-    $id = $query["v"]
-  } elseif ($uri.AbsolutePath -match "^/embed/([^/?]+)") {
-    $id = $matches[1]
-  }
-
-  if ([string]::IsNullOrWhiteSpace($id)) {
-    return @{ url = $urlText; id = $null; start = $null; label = $null }
-  }
-
-  $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
-  $startRaw = $query["t"]
-  if ([string]::IsNullOrWhiteSpace($startRaw)) {
-    $startRaw = $query["start"]
-  }
-  if ([string]::IsNullOrWhiteSpace($startRaw)) {
-    $startRaw = $query["time_continue"]
-  }
-  $cleanQuery = [System.Web.HttpUtility]::ParseQueryString("")
-  foreach ($key in $query.AllKeys) {
-    if ($key -in @("t", "start", "time_continue")) {
+  $fallback = $null
+  foreach ($urlMatch in $urlMatches) {
+    $urlText = $urlMatch.Value -replace '[)\]]+$', ''
+    try {
+      $uri = [Uri]$urlText
+    } catch {
       continue
     }
-    $null = $cleanQuery.Add($key, $query[$key])
-  }
-  $builder = New-Object System.UriBuilder($uri)
-  $builder.Query = $cleanQuery.ToString()
-  $urlText = $builder.Uri.AbsoluteUri
 
-  $start = Parse-TimeSeconds -raw $startRaw
-  $label = if ($start -ne $null) { SecondsToLabel -seconds $start } else { $null }
+    $id = $null
+    if ($uri.Host -eq "youtu.be") {
+      $id = $uri.AbsolutePath.Trim("/")
+    } elseif ($uri.AbsolutePath -match "^/watch$") {
+      $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+      $id = $query["v"]
+    } elseif ($uri.AbsolutePath -match "^/embed/([^/?]+)") {
+      $id = $matches[1]
+    }
+
+    if ([string]::IsNullOrWhiteSpace($id)) {
+      continue
+    }
+
+    $query = [System.Web.HttpUtility]::ParseQueryString($uri.Query)
+    $startRaw = $query["t"]
+    if ([string]::IsNullOrWhiteSpace($startRaw)) {
+      $startRaw = $query["start"]
+    }
+    if ([string]::IsNullOrWhiteSpace($startRaw)) {
+      $startRaw = $query["time_continue"]
+    }
+    $cleanQuery = [System.Web.HttpUtility]::ParseQueryString("")
+    foreach ($key in $query.AllKeys) {
+      if ($key -in @("t", "start", "time_continue")) {
+        continue
+      }
+      $null = $cleanQuery.Add($key, $query[$key])
+    }
+    $builder = New-Object System.UriBuilder($uri)
+    $builder.Query = $cleanQuery.ToString()
+    $cleanUrl = $builder.Uri.AbsoluteUri
+
+    $start = Parse-TimeSeconds -raw $startRaw
+    $label = if ($start -ne $null) { SecondsToLabel -seconds $start } else { $null }
+    $resolved = @{
+      url = $cleanUrl
+      id = $id
+      start = $start
+      label = $label
+    }
+
+    if ($start -ne $null -and $fallback -eq $null) {
+      $fallback = $resolved
+      continue
+    }
+
+    if ($fallback -eq $null) {
+      $fallback = $resolved
+    }
+
+    if ($start -ne $null) {
+      return $resolved
+    }
+  }
+
+  if ($fallback -ne $null) {
+    return $fallback
+  }
 
   return @{
-    url = $urlText
-    id = $id
-    start = $start
-    label = $label
+    url = $null
+    id = $null
+    start = $null
+    label = $null
   }
 }
 
@@ -152,6 +191,11 @@ function Collect-Places([System.Xml.XmlElement]$node, [string]$category, [System
     }
 
     $yt = Resolve-YouTube -description $description
+    $normalizedName = if ([string]::IsNullOrWhiteSpace($name)) { "" } else { $name.Trim() }
+    $override = $YouTubeTimestampOverrides[$normalizedName]
+    if (-not [string]::IsNullOrWhiteSpace($override)) {
+      $yt = Resolve-YouTube -description $override
+    }
     $items += [pscustomobject]@{
       id = "$name ($($parts[1]),$($parts[0]))"
       category = $currentCategory
@@ -182,7 +226,10 @@ $ns.AddNamespace("k", "http://www.opengis.net/kml/2.2")
 $documentNode = $xml.SelectSingleNode("//k:Document", $ns)
 if (-not $documentNode) { $documentNode = $xml.DocumentElement }
 $places = Collect-Places -node $documentNode -category "" -ns $ns
-$places = $places | Sort-Object category, name
+$places = $places | Sort-Object -Property `
+  { Parse-Episode($_.category) }, `
+  { if ($null -ne $_.youtubeStart) { [double]$_.youtubeStart } else { [double]::PositiveInfinity } }, `
+  { $_.name }
 
 $fullOutputPath = (Resolve-Path -Path (Split-Path -Parent $OutputPath -ErrorAction SilentlyContinue)).Path
 $root = if ([string]::IsNullOrWhiteSpace($fullOutputPath)) {
