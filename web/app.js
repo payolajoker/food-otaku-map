@@ -132,13 +132,10 @@ function buildMarkers() {
 
   for (const place of state.places) {
     const color = categoryColor(place.category);
-    const marker = L.circleMarker([place.lat, place.lon], {
-      radius: 8,
-      weight: 3,
-      color,
-      fillColor: color,
-      fillOpacity: 1,
-      opacity: 1,
+    const marker = L.marker([place.lat, place.lon], {
+      icon: createPlaceMarkerIcon(place, color),
+      keyboard: true,
+      title: place.name,
     });
 
     marker.bindPopup(renderPopupHtml(place), { autoPanPadding: [24, 24], closeButton: false });
@@ -149,6 +146,23 @@ function buildMarkers() {
     });
     state.markersById.set(place.id, marker);
   }
+}
+
+function createPlaceMarkerIcon(place, color) {
+  const html = `
+    <div class="mapMarker" style="--marker:${color}">
+      <span class="mapMarker__label">${escapeHtml(place.name)}</span>
+      <span class="mapMarker__pin" aria-hidden="true"></span>
+    </div>
+  `;
+
+  return L.divIcon({
+    className: "mapMarkerIcon",
+    html,
+    iconSize: [0, 0],
+    iconAnchor: [0, 0],
+    popupAnchor: [0, -52],
+  });
 }
 
 function renderCategoryChips() {
